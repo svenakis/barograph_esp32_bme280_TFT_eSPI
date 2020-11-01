@@ -1,11 +1,15 @@
-// esp32 reads from BME280 sensor pressure, temperature saves to a SD Card and
-// displays the values measured over 28 hours on a TFT Display
-// you need to adapt the file User_Setup.h  in Arduino/libraries/TFT_eSPI/
-// and in the subfolder User_Setups/
-// the right Setup Display file. F.eks. Setup1_ILI9341.h
+// esp32 reads BME280 sensor, puts this readings on a SD Card and
+// prints out everything nicely on a tft screen
+// you need: TFT 2.2 -> 2.4 " screen with a SD Card
+// esp32 has 3.3 V -> solder the jumper on den TFT SD Card to bypass the voltage
+// regulator
+// the SD card needs to be formated
+// use the standard SPI pins clk=18, miso=12, mosi=23
+// in User_Setup.h within the TFT_eSPI folder you have to define the pinout
+// for the TFT Display
+// SD.begin(4, SPI) defines the SD Card cs ( clockselect ) pin 
 
 #include <TFT_eSPI.h> // Hardware-specific library
-#include <SPI.h>
 #include <Adafruit_BMP280.h>
 #include <Wire.h>
 #include <SD.h>
@@ -17,7 +21,6 @@ TFT_eSPI tft = TFT_eSPI(); // Invoke custom library
 byte inc = 0;
 unsigned int col = 0;
 
-
 // barograph defines
 float temperature, pressure, altitude;
 void computePressureTrend();
@@ -26,6 +29,8 @@ void updateDataToDisplay();
 
 Adafruit_BMP280 bmp; // I2C
 
+/*
+ * SPI pins are set via TFT_eSPI library
 //#define BMP280_I2C_ALT_ADDR 0x76// alternative adresse 0x76  // I2C address of BMP280
 #define TFT_sclk 18      // TFT/SD: sclk pin 13 used from TFT SPI display and SD card read
 #define TFT_miso 12      // TFT/SD: miso pin 12 used from TFT SPI display and SD card read
@@ -33,38 +38,34 @@ Adafruit_BMP280 bmp; // I2C
 #define TFT_cs 5        // TFT:    cs used from TFT SPI display
 #define TFT_dc 25         // TFT/SD: dc used from TFT SPI display
 #define TFT_rst 14        // TFT/SD: rst used from TFT SPI display
+*/
+/*
 #define sd_cs 4       // SD:     sd_cs 4 used from SD card reader
 #define FREQBUZ 2500
 #define BUZ 7
+*/
 
 const unsigned char OSS = 0;  // Oversampling Setting
 unsigned long lastMeasurementTime =0;  
 unsigned long lastRefreshDisplay =0;
 byte heightsToDisplay[320];
+
 // touch on TFT SPI board
 
 // for LED Alarm
-int led =6;
+//int led =6;
+
 
 File historicFile;
+File TestHistoricFile;
 
-void setup(void)
+
+void init_screen(void)
 {
   tft.init();
   tft.fillScreen(ILI9341_BLUE);
   tft.setRotation(1);
-  
-  //tft.fillScreen(ILI9341_BLACK);
- // tft.fillScreen(TFT_GREEN);
- // tft.fillScreen(TFT_WHITE);
-  
-  //pinMode (6,OUTPUT);
-  //pinMode (7,OUTPUT);
-  //pinMode(10, OUTPUT);
-  //tft.begin();
-  //tft.fillScreen(blue);
-  //tft.setRotation(1);
-//delay(2000);  
+
   //Drawing frames
   tft.fillScreen(ILI9341_BLUE);
   tft.drawRect(1,1,318,238,ILI9341_WHITE);    // white rectangle at display border
@@ -88,7 +89,8 @@ void setup(void)
   tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(2);
   tft.setCursor(88, tft.height()-214);
   tft.println("hPa");
-  tft.setCursor(197, tft.height()-214);
+  //tft.setCursor(197, tft.height()-214);
+  tft.setCursor(189, tft.height()-233);
   tft.println("Pa/H");
   tft.setCursor(10, tft.height()-25);
   tft.println("48H");
@@ -103,23 +105,26 @@ void setup(void)
   tft.setCursor(tft.width()-25, 10);
   tft.println("C");
   tft.drawCircle(tft.width()-35,12,3,ILI9341_WHITE);  
+}
 
+void setup(void) {
   Serial.begin(115200);
   //Serial.begin(9600);
-    
+  
+  // SD on the TFT Display module 
+  if (!SD.begin(4, SPI)) {
+    Serial.println("initialization failed!");
+   return;
+  }
+  Serial.println("initialization done.");
+
   // I am using BME280 to measure pressure, temp. It's a more modern sensor as bmp085
   if (!bmp.begin(0x76)) {
       Serial.println(F("Could not find a valid BMP280 sensor"));
     while(1);
   }
-  // SD on the TFT Display module
-  if (!SD.begin(sd_cs)) {
-    Serial.println("initialization failed!");
-   return;
-  }
-  Serial.println("initialization done.");
   
-  /* Default settings from datasheet. */
+  // Default settings from datasheet.
   
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     //Operating Mode.
                     Adafruit_BMP280::SAMPLING_X2,     // Temp. oversampling
@@ -127,11 +132,16 @@ void setup(void)
                     Adafruit_BMP280::FILTER_X16,      // Filtering. 
                     Adafruit_BMP280::STANDBY_MS_500); // Standby time.
   bmp.readAltitude(1023.05);
+
+  init_screen();
 }
+
+
 
 void loop() {
   //Serial.println(bmp.readPressure());
-  //delay(1000);
+  //sd_card_read();
+  delay(1000);
   
   unsigned long gap = millis() - lastMeasurementTime;
   
@@ -146,6 +156,7 @@ void loop() {
       altitude = bmp.readAltitude();
       
       tft.fillRect(10,4,75,43, ILI9341_BLUE);//clear rectangle pressure value
+      //tft.fillRect(10,4,75,43, ILI9341_YELLOW);//clear rectangle pressure value
       tft.setCursor(10,tft.height()-220);
       tft.setTextColor(ILI9341_WHITE); tft.setTextSize(2);
       tft.print(pressure/100);// clear rectangle trend value
@@ -169,8 +180,8 @@ void updateDataToDisplay()
     tft.fillRect(11,51, 248, 74, ILI9341_BLUE);//clear screen  graph rectangles
     tft.fillRect(11, 126, 248, 73, ILI9341_BLUE);  
     int i=0;
-    //File historicFile = SD.open("test15.txt");//data saved in file test15
-    historicFile = SD.open("test15.txt");//data saved in file test15
+    //File historicFile = SD.open("/test15.txt");//data saved in file test15
+    historicFile = SD.open("/test15.txt");   //data saved in file test15
     if(!historicFile){
     return;
     }
@@ -183,6 +194,7 @@ void updateDataToDisplay()
     historicFile.seek(pos);
      for(int j = 0; j < 6; j++){         // reads the record bytes one by one
      pressureArray[j] = historicFile.read();
+     
      if(pressureArray[j]==' '){
           pressureArray[j] =0;
          }
@@ -201,9 +213,7 @@ void updateDataToDisplay()
      heightsToDisplay[i] = map(pressureValue, 98000, 103500,tft.height()-42,tft.height()-189 );
      tft.drawPixel(tft.width()-310 +i, heightsToDisplay[i], ILI9341_WHITE);
      // on esp32 there is enough space for extra line, not on nano
-     #if defined (ESP32)
-      tft.drawPixel(tft.width()-310 +i, heightsToDisplay[i]-1, ILI9341_WHITE);// to increase thikness of the graph
-     #endif
+     tft.drawPixel(tft.width()-310 +i, heightsToDisplay[i]-1, ILI9341_WHITE);// to increase thikness of the graph
      
      i++; 
      pos = pos+1112; // 276480 bits spread over 248 observations
@@ -224,12 +234,13 @@ void appendPressureInHistoric()
       pressureArray[5] =' ';
      }
     pressureArray[6]=0;
-    historicFile = SD.open("test15.txt", FILE_WRITE);
+    historicFile = SD.open("/test15.txt", FILE_WRITE);
     if(!historicFile){   
     return;
     
     }
     historicFile.println(pressureArray);
+    Serial.println(pressureArray);
     historicFile.close();
 }
 
@@ -240,10 +251,10 @@ void computePressureTrend()
     long druck = pressure; // convert float pressure -> long druck // bmp280.getPressure(pressure);
     //Serial.print("computePressureTrend(pressure/druck "); 
     //Serial.print(pressure); Serial.print(" "); Serial.println(druck);  
-    //File historicFile = SD.open("test15.txt");
-    historicFile = SD.open("test15.txt", FILE_WRITE); 
+    //File historicFile = SD.open("/test15.txt");
+    historicFile = SD.open("/test15.txt", FILE_WRITE); 
     if(!historicFile){
-     
+      //Serial.println("Couldn't open SD Card");
     return;
     }
     
@@ -266,23 +277,40 @@ void computePressureTrend()
     //Serial.println(OneHourTrend);
     
     if(OneHourTrend < -140){ // sound buzzer if pressure drop < -140 Pa/h
-     /*tone ( 6, 4000,500);
-     delay(500);
-     tone (6, 4500, 500);
-     delay(500);
-     digitalWrite(7,HIGH);//flash LED
-     delay(500);
-     digitalWrite(7,LOW);
-     */
+     //tone ( 6, 4000,500);
+     //delay(500);
+     //tone (6, 4500, 500);
+     //delay(500);
+     //digitalWrite(7,HIGH);//flash LED
+     //delay(500);
+     //digitalWrite(7,LOW);
+     
      Serial.println("OneHourTrend < -140");
     }
     
     //noTone(6);
     //digitalWrite(led,LOW);
     
-    tft.fillRect(140,4,47,43,ILI9341_BLUE);        
-    tft.setCursor(140 ,tft.height()-214);           
-    tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(2);
+    //tft.fillRect(140,4,47,43,ILI9341_BLUE);        
+    //tft.setCursor(140 ,tft.height()-214);           
+    tft.fillRect(155,22,87,26,ILI9341_BLUE); // fill with blue to update number
+    tft.setCursor(155 ,tft.height()-214);           
+    tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(3);
     tft.println(OneHourTrend);
+    Serial.print("OneHourTrend: "); Serial.println(OneHourTrend);
     historicFile.close();
+}
+
+void sd_card_read(){
+  File file2 = SD.open("/test15.txt", FILE_READ);
+ 
+  if (!file2) {
+    Serial.println("Opening file to read failed");
+    return;
+  }
+  Serial.println("File Content:");
+  while (file2.available()) {
+    Serial.write(file2.read());
+  }
+  file2.close();
 }
