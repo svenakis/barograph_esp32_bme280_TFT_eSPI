@@ -1,4 +1,5 @@
-// esp32 reads BME280 sensor, puts this readings on a SD Card and
+// esp32 reads BMP280 sensor, puts this readings on a SD Card and
+// not BME 280 sensor
 // prints out everything nicely on a tft screen
 // you need: TFT 2.2 -> 2.4 " screen with a SD Card
 // esp32 has 3.3 V -> solder the jumper on den TFT SD Card to bypass the voltage
